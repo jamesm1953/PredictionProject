@@ -4,19 +4,87 @@ author: "James Martin"
 date: "September 23, 2015"
 output: html_document
 ---
+<!-- rmarkdown v1 -->
+## Practical Machine Learning - Project
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+### Overview
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The goal of this project is to build a model predicting how five subjects performed barbell lifts, both correctly and incorrectly. The data was provided by [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har). Both training and testing data was supplied. The models were built using the training data, and the graded submissions were produced by applying them to the testing data.
+
+### Preparing the Data
+
+The training data was loaded from the source file and a subset created further processing. This subset was made up of the direct measurements, omitting identifying variables, timestamps, and summary measures.
+
+```{r loadData, cache=TRUE}
+# Load the training data
+trainingData <- read.csv("C:/Training/Coursera/DataScience/8 - Practical Machine Learning/Project/pml-training.csv")
+# Remove extraneous variables
+selectedFields <- c(8:10,37:48,60:68,84:86,113:124,151:159,160)
+targetData <- trainingData[,selectedFields]
+```
+
+The resulting data set was partitioned into a training set and a test set. The training set consists of 70% of the cases, with the remaining 30% held out for cross-validation of the models.
+
+```{r createSubsets, cache=TRUE, message=FALSE}
+require(caret)
+# Selected training cases
+inTrain <- createDataPartition(targetData$classe, times=1, p=0.7, list=FALSE)
+# Create training data
+train <- targetData[inTrain,]
+# Create validation data
+test <- targetData[-inTrain,]
+```
+
+### Building the Models
+
+Since the target variable (**classe**) is a factor with five levels, a tree model seemed to be appropriate. The first attempt was a CART model using all the variables in the reduced training data:
+
+```{r modelCART, cache=TRUE, message=FALSE}
+cartFit <- train(classe ~ ., method="rpart", data=train)
+```
+
+The results were not terribly impressive, yielding only a 52% accuracy rate on the training data:
 
 ```{r}
-summary(cars)
+cartFit$results
 ```
 
-You can also embed plots, for example:
+Cross-validation using the validation data held out from the original sample confirms this poor performance:
 
-```{r, echo=FALSE}
-plot(cars)
+```{r resultsCART, message=FALSE}
+cartPred <- predict(cartFit, newdata=test)
+cartTab <- table(test$classe, cartPred)
+cartTab
+cartError <- 1 - ((cartTab[1,1]+cartTab[2,2]+cartTab[3,3]+cartTab[4,4]+cartTab[5,5])/nrow(test))
+cartError
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The CART model predicts an out-of-sample error rate of approximately 50% -- not nearly good enough to submit for grading.
+
+At the risk of overfitting the training data, a random forest model was tried next:
+
+```{r modelRandomForest, cache=TRUE, message=FALSE}
+rfFit <- train(classe ~ ., method="rf", data=train)
+```
+
+This time, the results were very encouraging:
+
+```{r}
+rfFit$results
+```
+
+A similar cross-validation using the hold-out data supports this:
+
+```{r resultsRandomForest, message=FALSE}
+rfPred <- predict(rfFit, newdata=test)
+rfTab <- table(test$classe, rfPred)
+rfTab
+rfError <- 1 - ((rfTab[1,1]+rfTab[2,2]+rfTab[3,3]+rfTab[4,4]+rfTab[5,5])/nrow(test))
+rfError
+```
+
+For this model, the expected out-of-sample error rate is approximately 0.4% -- **much** better than the CART model. However, it also seems unrealistically accurate -- overfitting seems to present a definite risk.
+
+### Results
+
+I was delighted to discover that the random forest model correctly predicted all 20 test cases.
